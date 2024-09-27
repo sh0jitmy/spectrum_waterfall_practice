@@ -22,6 +22,13 @@ function connectWebSocket(spectrum) {
             if (data.center) {
                 spectrum.setCenterHz(data.center);
             }
+            if (data.maxholdfreq) {
+                spectrum.setMaxFreq(data.maxholdfreq)
+            }
+            if (data.maxholdlevel) {
+                spectrum.setMaxLevel(data.maxholdlevel)
+            }
+            // no uses (not change from 30MHz)
             if (data.span) {
                 spectrum.setSpanHz(data.span);
             }

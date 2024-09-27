@@ -131,6 +131,13 @@ Spectrum.prototype.drawSpectrum = function(bins) {
 
     // Copy axes from offscreen canvas
     this.ctx.drawImage(this.ctx_axes.canvas, 0, 0);
+
+    //console.log("marker update:",this.markerFrequency)
+    // マーカーの描画
+    if (this.markerFrequency) {
+        this.drawMarker(this.markerFrequency,bins);
+    }
+
 }
 
 Spectrum.prototype.updateAxes = function() {
@@ -389,12 +396,15 @@ function Spectrum(id, options) {
     this.centerHz = (options && options.centerHz) ? options.centerHz : 150000000;
     this.spanHz = (options && options.spanHz) ? options.spanHz : 30000000;
     this.wf_size = (options && options.wf_size) ? options.wf_size : 0;
-    this.wf_rows = (options && options.wf_rows) ? options.wf_rows : 4192;
+    this.wf_rows = (options && options.wf_rows) ? options.wf_rows : 4096;
     //this.spectrumPercent = (options && options.spectrumPercent) ? options.spectrumPercent : 25;
     this.spectrumPercent = (options && options.spectrumPercent) ? options.spectrumPercent : 70;
     this.spectrumPercentStep = (options && options.spectrumPercentStep) ? options.spectrumPercentStep : 5;
     this.averaging = (options && options.averaging) ? options.averaging : 0;
     this.maxHold = (options && options.maxHold) ? options.maxHold : false;
+
+    //marker freq def
+    this.markerFrequency = 160000000
 
     // Setup state
     this.paused = false;
@@ -431,4 +441,40 @@ function Spectrum(id, options) {
     this.setAveraging(this.averaging);
     this.updateSpectrumRatio();
     this.resize();
+}
+
+// マーカーを描画する関数を追加
+Spectrum.prototype.drawMarker = function(freq,bins) {
+    //console.log("marker update:",freq)
+    var width = this.ctx.canvas.width;
+    var height = this.spectrumHeight;
+    
+    // 周波数から位置を計算
+    var freqPosition = ((freq - (this.centerHz - this.spanHz / 2)) / this.spanHz) * width;
+
+    console.log("marker update:",freqPosition)
+    if (freqPosition >= 0 && freqPosition <= this.wf_size) {
+        // マーカーの位置に線を描画
+        this.ctx.beginPath();
+        this.ctx.moveTo(freqPosition, 0);
+        this.ctx.lineTo(freqPosition, height);
+        this.ctx.strokeStyle = "white";  // マーカーの色を赤に設定
+        this.ctx.stroke();
+
+	 // 最も近い周波数のバンドを探す
+        var binIndex = Math.round((freq - (this.centerHz - this.spanHz / 2)) / this.spanHz * bins.length);
+        var level = bins[binIndex] || 0;  // bins が空の場合は 0 に
+
+        // マーカーの周波数を MHz 表示に変更し、レベルも表示
+        this.ctx.font = "12px sans-serif";
+        this.ctx.fillStyle = "white";
+        var freqLabel = (freq / 1000000).toFixed(2) + " MHz";  // 周波数を MHz に
+        var levelLabel = level.toFixed(2) + " dBm";  // レベル表示
+        this.ctx.fillText(freqLabel + " / " + levelLabel, freqPosition + 5, 15);  // 周波数とレベルのラベル
+    }
+}
+
+// マーカー周波数を設定する関数を追加
+Spectrum.prototype.setMarkerFrequency = function(freq) {
+    this.markerFrequency = freq;
 }
