@@ -10,16 +10,22 @@ import (
 	"path/filepath"
 	"time"
 	//"encoding/json"
-
+	"sync"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
 
-const FFT_SIZE = 4096
+const FFT_SIZE = 8192 
 
 type Spectrum struct{
 	Data []int32 `json:"s"`
 }
+
+// 接続しているWebSocketクライアントを管理するための変数
+var clients = make(map[*websocket.Conn]bool)
+var broadcast = make(chan map[string]int)
+var mutex = &sync.Mutex{}
+
 
 // WebSocket用のアップグレーダー
 var upgrader = websocket.Upgrader{
@@ -30,7 +36,7 @@ var upgrader = websocket.Upgrader{
 
 
 func ownFreq(fo int) bool {
-	if fo > FFT_SIZE/2 -96 && fo < FFT_SIZE/2 + 96 {
+	if fo > FFT_SIZE/2 -3 && fo < FFT_SIZE/2 + 3 {
 		return true
 	} else {
 		return false
@@ -46,9 +52,9 @@ func generateMockFFT(sp *Spectrum) {
 		if ownFreq(i) {
 			offset = -20
 		} else {
-			offset = -110
+			offset = -100
 		}
-		sp.Data[i] = offset+int32(3*math.Sin(float64(i)/float64(FFT_SIZE)*2*math.Pi) + 1*rand.Float64())
+		sp.Data[i] = offset+int32(3*math.Sin(float64(i)/float64(FFT_SIZE)*2*math.Pi) + 10*rand.Float64())
 		//sp.Data[i] = float32(20*math.Sin(float64(i)/float64(FFT_SIZE)*2*math.Pi) + 10*rand.Float64())
 		//sp.Data[i] = float32(255 + rand.Float64() + math.Sin(2*math.Pi))
 	}
@@ -84,9 +90,50 @@ func handleWebSocket(c *gin.Context) {
 	}
 	defer conn.Close()
 
-	log.Println("Client connected")
-	sendFFTData(conn)
+	// クライアントを追加
+	mutex.Lock()
+	clients[conn] = true
+	mutex.Unlock()
+
+	// クライアントに模擬FFTデータを送信し続ける
+	go sendFFTData(conn)
+
+	// ブロードキャストを待機
+	for {
+		select {
+		case msg := <-broadcast:
+			err := conn.WriteJSON(msg)
+			if err != nil {
+				log.Println("WebSocket error:", err)
+				conn.Close()
+				mutex.Lock()
+				delete(clients, conn)
+				mutex.Unlock()
+				return
+			}
+		}
+	}
 }
+
+// /centerfreqのエンドポイントでPUTされた整数値をWebSocketクライアントに送信
+func updateCenterFreq(c *gin.Context) {
+	var jsonData struct {
+		Value int `json:"value"`
+	}
+	if err := c.ShouldBindJSON(&jsonData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	// center key with the value received from PUT request
+	msg := map[string]int{"center": jsonData.Value}
+
+	// クライアントにブロードキャスト
+	broadcast <- msg
+
+	c.JSON(http.StatusOK, gin.H{"status": "center frequency updated", "center": jsonData.Value})
+}
+
 
 // 実行ディレクトリにあるファイルを返す
 func serveFile(c *gin.Context) {
@@ -124,6 +171,9 @@ func main() {
 
 	// URIの指定されたファイルパスに応じたファイルを返す
 	r.GET("/file/*filepath", serveFile)
+
+	// PUTリクエストでcenter frequencyを更新
+	r.PUT("/centerfreq", updateCenterFreq)
 
 	// サーバーを起動
 	port := 8080
