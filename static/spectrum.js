@@ -209,6 +209,7 @@ Spectrum.prototype.addData = function(data) {
         this.drawSpectrum(data);
         this.addWaterfallRow(data);
         this.resize();
+        this.bins = data
     }
 }
 
@@ -406,6 +407,7 @@ function Spectrum(id, options) {
     //marker freq def
     this.markerFrequency = 160000000
 
+
     // Setup state
     this.paused = false;
     this.fullscreen = false;
@@ -441,6 +443,9 @@ function Spectrum(id, options) {
     this.setAveraging(this.averaging);
     this.updateSpectrumRatio();
     this.resize();
+    
+    //init markdrag
+    this.initMarkerDrag();
 }
 
 // マーカーを描画する関数を追加
@@ -452,7 +457,7 @@ Spectrum.prototype.drawMarker = function(freq,bins) {
     // 周波数から位置を計算
     var freqPosition = ((freq - (this.centerHz - this.spanHz / 2)) / this.spanHz) * width;
 
-    console.log("marker update:",freqPosition)
+    //console.log("marker update:",freqPosition)
     if (freqPosition >= 0 && freqPosition <= this.wf_size) {
         // マーカーの位置に線を描画
         this.ctx.beginPath();
@@ -477,4 +482,47 @@ Spectrum.prototype.drawMarker = function(freq,bins) {
 // マーカー周波数を設定する関数を追加
 Spectrum.prototype.setMarkerFrequency = function(freq) {
     this.markerFrequency = freq;
+    this.drawSpectrum(this.bins);
 }
+
+// マウスイベントを追加して、マーカーをドラッグ可能に
+Spectrum.prototype.initMarkerDrag = function() {
+    var isDragging = false;
+    var self = this;
+
+    // キャンバスにマウスダウンイベントを追加
+    this.ctx.canvas.addEventListener('mousedown', function(event) {
+        var width = self.ctx.canvas.width;
+        var rect = self.ctx.canvas.getBoundingClientRect();
+        var mouseX = event.clientX - rect.left;
+        var freqPosition = ((self.markerFrequency - (self.centerHz - self.spanHz / 2)) / self.spanHz) * width;
+
+        // マウスがマーカーの近くにある場合、ドラッグを開始
+        if (Math.abs(mouseX - freqPosition) < 10) { // 10px以内でクリックとみなす
+            isDragging = true;
+        }
+    });
+
+    // マウスムーブイベントでドラッグ中にマーカーの周波数を更新
+    this.ctx.canvas.addEventListener('mousemove', function(event) {
+        if (isDragging) {
+            var rect = self.ctx.canvas.getBoundingClientRect();
+            var mouseX = event.clientX - rect.left;
+            var width = self.ctx.canvas.width;
+
+            // マウス位置から周波数を再計算
+            var newFrequency = (mouseX / width) * self.spanHz + (self.centerHz - self.spanHz / 2);
+            self.setMarkerFrequency(newFrequency);
+        }
+    });
+
+    // マウスアップイベントでドラッグを終了
+    this.ctx.canvas.addEventListener('mouseup', function() {
+        isDragging = false;
+    });
+
+    // キャンバス外にマウスが出た場合でもドラッグを終了
+    this.ctx.canvas.addEventListener('mouseleave', function() {
+        isDragging = false;
+    });
+};
